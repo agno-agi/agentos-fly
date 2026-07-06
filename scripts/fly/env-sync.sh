@@ -2,15 +2,16 @@
 
 ############################################################################
 #
-#    Agno Railway Environment Sync
+#    Agno Fly.io Environment Sync
 #
 #    Usage:
-#      ./scripts/railway/env-sync.sh             # syncs .env.production
-#      ./scripts/railway/env-sync.sh .env        # syncs .env instead
+#      ./scripts/fly/env-sync.sh             # syncs .env.production
+#      ./scripts/fly/env-sync.sh .env        # syncs .env instead
 #
-#    Reads the file and pushes every variable to the Railway agent-os
-#    service. Multi-line values (e.g. PEM-formatted JWT_VERIFICATION_KEY)
-#    are handled correctly.
+#    Reads the file and pushes every variable to the Fly app as secrets in
+#    one call — a single restart, no matter how many variables changed.
+#    Multi-line values (e.g. PEM-formatted JWT_VERIFICATION_KEY) are
+#    handled correctly. Run from the repo root (reads fly.toml).
 #
 ############################################################################
 
@@ -29,23 +30,29 @@ if [[ ! -f "$ENV_FILE" ]]; then
     exit 1
 fi
 
-if ! command -v railway &> /dev/null; then
-    echo "Railway CLI not found. Install: https://docs.railway.app/guides/cli"
+if command -v flyctl &> /dev/null; then
+    FLY=flyctl
+elif command -v fly &> /dev/null; then
+    FLY=fly
+else
+    echo "flyctl not found. Install: https://fly.io/docs/flyctl/install/"
     exit 1
 fi
 
-if ! railway status &> /dev/null; then
-    echo "Not linked to a Railway project. Run ./scripts/railway/up.sh first."
+APP_NAME="$(sed -nE 's/^app = "(.*)"$/\1/p' fly.toml 2>/dev/null | head -1)"
+if [[ -z "$APP_NAME" || "$APP_NAME" == "agentos" ]]; then
+    echo "fly.toml doesn't carry a provisioned app name. Run ./scripts/fly/up.sh first."
     exit 1
 fi
 
 echo ""
-echo -e "${BOLD}Syncing env vars from ${ENV_FILE} to Railway...${NC}"
+echo -e "${BOLD}Syncing env vars from ${ENV_FILE} to Fly app ${APP_NAME}...${NC}"
 echo ""
 
 # Parse the env file, treating PEM blocks (and other multiline values)
-# as a single variable.
-count=0
+# as a single variable. Collect everything into one `fly secrets set`
+# call so the app restarts once.
+SECRET_ARGS=()
 current_key=""
 current_value=""
 
@@ -76,15 +83,21 @@ ${line}"
     current_value="${current_value#\'}"
     current_value="${current_value%\'}"
 
-    echo -e "${DIM}  Setting ${current_key}${NC}"
-    railway variables --set "${current_key}=${current_value}" --service agent-os 2>/dev/null
-    count=$((count + 1))
+    echo -e "${DIM}  Staging ${current_key}${NC}"
+    SECRET_ARGS+=("${current_key}=${current_value}")
 
     current_key=""
     current_value=""
 done < "$ENV_FILE"
 
+if [[ ${#SECRET_ARGS[@]} -eq 0 ]]; then
+    echo "Nothing to sync."
+    exit 0
+fi
+
+"$FLY" secrets set --app "$APP_NAME" "${SECRET_ARGS[@]}"
+
 echo ""
-echo -e "${BOLD}Done.${NC} Synced ${count} variable(s) to Railway."
-echo -e "${DIM}Railway will auto-redeploy if values changed.${NC}"
+echo -e "${BOLD}Done.${NC} Synced ${#SECRET_ARGS[@]} variable(s) to ${APP_NAME}."
+echo -e "${DIM}Fly restarts the machine once with the new values.${NC}"
 echo ""

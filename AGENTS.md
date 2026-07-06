@@ -1,10 +1,10 @@
-# AgentOS — Railway template
+# AgentOS — Fly.io template
 
 This file is the source of truth for any agent (Claude Code, Codex, others) working in this repo. `CLAUDE.md` is a symlink to this file — edit one, both update.
 
 ## Project Overview
 
-**AgentOS — the agent backend for every frontend.** An agent server built on [Agno](https://docs.agno.com) that attaches to any client: **REST** for programmatic use, **chat interfaces** for humans (Slack is wired in; WhatsApp/Telegram/Discord mirror the same pattern), and **MCP** at `/mcp` for AI apps (claude.ai, ChatGPT, Cursor, Claude Code) — which work *through* the platform, not just on it. The repo itself is designed for coding agents to build and extend. Two flagship agents — Agent Builder (creates agents, teams, and workflows) and Platform Manager (understands, monitors, and explains the platform) — plus WebSearch as the simplest sample agent to copy. Postgres (pgvector) handles persistence for sessions, memory, and knowledge. Runs locally via Docker; this template deploys to Railway with a single script and is the reference sibling of the `agentos-*` deployment family — see [Portable core vs. deploy layer](#portable-core-vs-deploy-layer).
+**AgentOS — the agent backend for every frontend.** An agent server built on [Agno](https://docs.agno.com) that attaches to any client: **REST** for programmatic use, **chat interfaces** for humans (Slack is wired in; WhatsApp/Telegram/Discord mirror the same pattern), and **MCP** at `/mcp` for AI apps (claude.ai, ChatGPT, Cursor, Claude Code) — which work *through* the platform, not just on it. The repo itself is designed for coding agents to build and extend. Two flagship agents — Agent Builder (creates agents, teams, and workflows) and Platform Manager (understands, monitors, and explains the platform) — plus WebSearch as the simplest sample agent to copy. Postgres (pgvector) handles persistence for sessions, memory, and knowledge. Runs locally via Docker; this template deploys to Fly.io with a single script and is the Fly sibling of the `agentos-*` deployment family — see [Portable core vs. deploy layer](#portable-core-vs-deploy-layer).
 
 ## Architecture
 
@@ -47,7 +47,7 @@ Shared:
 | [`.agents/skills/`](.agents/skills/) | Dev-time **coding-agent workflows** (`create-new-agent`, `extend-agent`, `improve-agent`, `eval-and-improve`, `review-and-improve`) — slash commands coding agents run *on this repo*. `.claude/skills` is a committed symlink into it — see [Working with coding agents](#working-with-coding-agents). |
 | [`README.md`](README.md) | Public entry point — leads with the copy-paste setup prompt that takes a coding agent from clone to connected. |
 | [`compose.yaml`](compose.yaml) | Docker Compose for local development. |
-| [`railway.json`](railway.json) | Railway deploy config (Docker + 1 replica + 4Gi/2vCPU). |
+| [`fly.toml`](fly.toml) | Fly deploy config — 2 shared vCPUs/4GB parity sizing, auto_stop off + min 1 machine so the in-process scheduler stays warm; app name + `AGENTOS_URL` written by `up.sh`. |
 
 ## Development Setup
 
@@ -187,10 +187,10 @@ Invoke a skill by name (`/extend-agent`) or just describe the task — Claude Co
 | Variable | Required | Default | Description |
 |---|---|---|---|
 | `OPENAI_API_KEY` | yes | — | OpenAI key for models + embeddings. |
-| `RUNTIME_ENV` | no | `prd` | `dev` disables JWT. Compose sets this to `dev` for local — never put it in an env file that syncs to Railway, or production deploys unauthenticated. |
+| `RUNTIME_ENV` | no | `prd` | `dev` disables JWT. Compose sets this to `dev` for local — never put `dev` in an env file that env-sync.sh pushes to Fly, or production serves unauthenticated. |
 | `JWT_VERIFICATION_KEY` | prd | — | Public key from os.agno.com. Required when `RUNTIME_ENV=prd` and `authorization=True`, unless `JWT_JWKS_FILE` is set. |
 | `JWT_JWKS_FILE` | prd | — | Path to a JWKS file; alternative to `JWT_VERIFICATION_KEY` for production JWT verification. |
-| `AGENTOS_URL` | no | `http://127.0.0.1:8000` | Scheduler base URL — cron triggers reach AgentOS over this. `scripts/railway/up.sh` auto-sets it to the created Railway domain (and writes it back into your env file); only set it by hand for custom domains or tunnels. Left at the localhost default in prod, scheduled jobs silently never fire. |
+| `AGENTOS_URL` | no | `http://127.0.0.1:8000` | Scheduler base URL — cron triggers reach AgentOS over this. `scripts/fly/up.sh` sets it to the predictable app URL (https://<app>.fly.dev) before the first deploy (in fly.toml and your env file); only set it by hand for custom domains. Left at the localhost default in prod, scheduled jobs silently never fire. |
 | `ENABLE_DEPLOY_CHECK` | no | `True` | The reference deployment-check cron (`app/schedules.py`) runs daily by default. Set `False` to disable; the workflow stays runnable on demand regardless. |
 | `ENABLE_SCHEDULED_EVALS` | no | `False` | If `True`, schedules the run-evals workflow daily. Off by default because it uses model calls. |
 | `EVALS_TAG` | no | `smoke` | Eval tag run by the run-evals workflow. |
@@ -245,29 +245,32 @@ For Discord, Telegram, WhatsApp, and custom UIs, mirror the Slack conditional pa
 
 ## Portable core vs. deploy layer
 
-This repo is the Railway sibling of the `agentos-*` deployment family (agentos-docker, agentos-aws, agentos-fly, agentos-gcp, agentos-azure, agentos-modal). Everything that defines the platform is **portable core — identical across the family**: `agents/`, `app/`, `db/`, `workflows/`, `evals/`, the MCP server wiring, the interfaces, and the coding-agent skills in `.agents/skills/`. `Dockerfile`, `compose.yaml`, and `scripts/entrypoint.sh` are shared local-dev/runtime infra, also not deployment-specific.
+This repo is the Fly.io sibling of the `agentos-*` deployment family ([agentos-railway](https://github.com/agno-agi/agentos-railway) is the reference; agentos-docker is the self-hosted sibling; agentos-aws, agentos-gcp, agentos-azure, agentos-modal cover the other clouds). Everything that defines the platform is **portable core — identical across the family**: `agents/`, `app/`, `db/`, `workflows/`, `evals/`, the MCP server wiring, the interfaces, and the coding-agent skills in `.agents/skills/`. `Dockerfile`, `compose.yaml`, and `scripts/entrypoint.sh` are shared local-dev/runtime infra, also not deployment-specific.
 
-The **Railway-specific deploy layer** — what a sibling template swaps out — is exactly:
+The **Fly-specific deploy layer** — what a sibling template swaps out — is exactly:
 
-- [`railway.json`](railway.json)
-- [`scripts/railway/`](scripts/railway/) (`up.sh`, `env-sync.sh`, `redeploy.sh`)
-- the "Deploying to Railway" prose here and in the README
+- [`fly.toml`](fly.toml)
+- [`scripts/fly/`](scripts/fly/) (`up.sh`, `env-sync.sh`, `redeploy.sh`, `down.sh`)
+- the "Deploying to Fly.io" prose here and in the README
 
-When editing, keep that boundary crisp: platform behavior belongs in the core, Railway mechanics belong in the deploy layer, and nothing in the core should import from or depend on it.
+When editing, keep that boundary crisp: platform behavior belongs in the core, Fly mechanics belong in the deploy layer, and nothing in the core should import from or depend on it.
 
-## Deploying to Railway
+## Deploying to Fly.io
 
 ```bash
-./scripts/railway/up.sh        # provision Postgres + agent-os service
-./scripts/railway/env-sync.sh  # sync .env.production (default) or .env
-./scripts/railway/redeploy.sh  # redeploy after code changes
+./scripts/fly/up.sh        # provision app + Postgres + deploy
+./scripts/fly/env-sync.sh  # sync .env.production (default) or .env as Fly secrets, one restart
+./scripts/fly/redeploy.sh  # redeploy after code changes
+./scripts/fly/down.sh      # destroy app + Postgres
 ```
 
-`up.sh` creates the domain before deploying and sets `AGENTOS_URL` to it (on Railway and in your env file), so the scheduler is reachable in prod out of the box.
+Fly app names are global, so `up.sh` generates `agentos-<suffix>` and records it in [`fly.toml`](fly.toml) — every later fly command (deploy, logs, secrets) targets it without `--app`. The URL is predictable pre-deploy (`https://<app>.fly.dev`), so `up.sh` sets `AGENTOS_URL` before the app first serves (in fly.toml and your env file) and the scheduler is reachable in prod out of the box.
 
-JWT auth is on by default. After creating the Railway domain, `up.sh` pauses if `JWT_VERIFICATION_KEY` or `JWT_JWKS_FILE` is missing, so you can connect the OS at os.agno.com (Connect OS → Live, name it `Live AgentOS`, then Settings → OS & Security → Token-Based Authorization (JWT)), paste the full PEM into the prompt, and let the script save it to the env file. Live AgentOS Connections are a paid feature; use `PLATFORM30` to get 1 month off. The script re-reads the env file and pushes the key before the first deploy. If you skip the prompt or run non-interactively, add the key later and run `./scripts/railway/env-sync.sh`.
+Postgres is unmanaged Fly Postgres, reached over the private `<pg-app>.flycast` address via discrete `DB_*` secrets. **The stock postgres-flex image does not ship pgvector**: sessions and memory work out of the box, but knowledge bases (RAG) need the extension — set `FLY_PG_IMAGE` to a postgres-flex derivative with pgvector installed (two-line Dockerfile: `FROM flyio/postgres-flex:17` + `apt-get install -y postgresql-17-pgvector`) before running `up.sh`, or the script warns and knowledge bases fail at `CREATE EXTENSION` time. The app builds its database URL from those in `db/url.py` and never reads `DATABASE_URL`, so `fly pg attach` is deliberately not used.
 
-The Railway *project* is `agentos-railway`; the app *service* is `agent-os`.
+JWT auth is on by default. `up.sh` pauses if `JWT_VERIFICATION_KEY` or `JWT_JWKS_FILE` is missing, so you can connect the OS at os.agno.com (Connect OS → Live, name it `Live AgentOS`, then Settings → OS & Security → Token-Based Authorization (JWT)), paste the full PEM into the prompt, and let the script save it to the env file. Live AgentOS Connections are a paid feature; use `PLATFORM30` to get 1 month off. The script pushes the key as a secret before the first deploy. If you skip the prompt or run non-interactively, add the key later and run `./scripts/fly/env-sync.sh`.
+
+**Single-machine by design.** Deploys use `fly deploy --ha=false` (both `up.sh` and `redeploy.sh` do) because the Fly default creates two machines — double the cost, and two in-process schedulers double-firing every cron. If you ever want HA, the scheduler must first be made single-instance.
 
 ## Common Tasks
 
@@ -286,8 +289,8 @@ docker compose up -d --build
 # Build a multi-arch image (maintainer-only)
 ./scripts/build_image.sh
 
-# Tail Railway logs
-railway logs --service agent-os
+# Tail Fly logs (app comes from fly.toml)
+fly logs
 ```
 
 ## Documentation Links

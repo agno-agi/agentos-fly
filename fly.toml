@@ -1,0 +1,36 @@
+# Fly.io deploy config — AgentOS
+#
+# app, primary_region, and AGENTOS_URL are rewritten in place by
+# scripts/fly/up.sh (app names are global on Fly, so up.sh generates a unique
+# suffix; primary_region keeps app machines in the same region as Postgres).
+#
+# Sizing is pinned to the family reference (agentos-railway): 2 shared vCPUs / 4 GB
+# (shared-cpu-2x, ~$21/mo). For dedicated cores, switch size to
+# "performance-2x" (~$62/mo).
+#
+# The scheduler is an in-process poller, so the machine must stay warm:
+# auto_stop_machines stays "off" and min_machines_running stays 1 — with
+# scale-to-zero, scheduled jobs silently stop firing. Deploys must use
+# --ha=false (scripts/fly/{up,redeploy}.sh do): the Fly default creates TWO
+# machines, which doubles cost and runs two schedulers double-firing every cron.
+
+app = "agentos"
+primary_region = "iad"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  WAIT_FOR_DB = "True"
+  AGENTOS_URL = "https://agentos.fly.dev"
+
+[http_service]
+  internal_port = 8000
+  force_https = true
+  auto_stop_machines = "off"
+  auto_start_machines = true
+  min_machines_running = 1
+
+[[vm]]
+  size = "shared-cpu-2x"
+  memory = "4gb"
