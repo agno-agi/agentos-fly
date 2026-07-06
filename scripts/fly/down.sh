@@ -67,10 +67,28 @@ echo ""
 echo -e "${BOLD}Destroying ${PG_APP_NAME}...${NC}"
 "$FLY" apps destroy "$PG_APP_NAME" --yes || echo -e "${DIM}Destroy returned non-zero — verifying below${NC}"
 
+# An app only counts as gone when Fly says so. `fly status` also exits
+# non-zero on an expired token or network blip — treating that as "gone"
+# would reset fly.toml while both apps are still alive.
+app_confirmed_gone() {
+    local app="$1" output
+    if output="$("$FLY" status --app "$app" 2>&1)"; then
+        return 1
+    fi
+    if grep -qi "could not find" <<< "$output"; then
+        return 0
+    fi
+    echo ""
+    echo -e "${BOLD}Couldn't verify ${app} is gone${NC} — fly status failed with:"
+    echo -e "${DIM}${output}${NC}"
+    echo -e "fly.toml keeps the app name so you can retry. Check: ${FLY} apps list"
+    exit 1
+}
+
 # Only reset fly.toml once both apps are confirmed gone — resetting after a
 # failed destroy (expired token, network blip) would orphan the generated
 # name and leave the resources running with no record of them.
-if "$FLY" status --app "$APP_NAME" &> /dev/null || "$FLY" status --app "$PG_APP_NAME" &> /dev/null; then
+if ! app_confirmed_gone "$APP_NAME" || ! app_confirmed_gone "$PG_APP_NAME"; then
     echo ""
     echo -e "${BOLD}Teardown incomplete${NC} — at least one app still exists. fly.toml keeps"
     echo -e "the app name so you can retry. Check: ${FLY} apps list"
@@ -80,6 +98,7 @@ fi
 # Reset fly.toml so a future up.sh provisions fresh
 sed -i.bak -E "s|^app = .*|app = \"agentos\"|" fly.toml && rm -f fly.toml.bak
 sed -i.bak -E "s|^primary_region = .*|primary_region = \"iad\"|" fly.toml && rm -f fly.toml.bak
+sed -i.bak -E "s|^  AGENTOS_URL = .*|  AGENTOS_URL = \"https://agentos.fly.dev\"|" fly.toml && rm -f fly.toml.bak
 
 echo ""
 echo -e "${BOLD}Done.${NC} Both apps confirmed gone. Verify anytime with: ${FLY} apps list"

@@ -67,11 +67,13 @@ persist_env_var() {
 
 # Persist a multi-line env value. Existing active KEY= blocks are removed before
 # appending the new value; commented examples are left alone as documentation.
+# Written quoted (KEY="...") — the form example.env documents so docker compose
+# env_file parsing keeps the block as one value.
 persist_multiline_env_var() {
     local key="$1" value="$2" file="$3" tmp line skipping=0 value_part
     [[ -z "$file" ]] && return
     if [[ ! -f "$file" ]]; then
-        printf '%s=%s\n' "$key" "$value" > "$file"
+        printf '%s="%s"\n' "$key" "$value" > "$file"
         return
     fi
 
@@ -94,7 +96,7 @@ persist_multiline_env_var() {
     done < "$file"
 
     [[ -s "$tmp" ]] && printf '\n' >> "$tmp"
-    printf '%s=%s\n' "$key" "$value" >> "$tmp"
+    printf '%s="%s"\n' "$key" "$value" >> "$tmp"
     cat "$tmp" > "$file"
     rm -f "$tmp"
 }
@@ -211,6 +213,20 @@ EXISTING_APP="$(sed -nE 's/^app = "(.*)"$/\1/p' fly.toml | head -1)"
 if [[ "$EXISTING_APP" == agentos-* ]]; then
     APP_NAME="$EXISTING_APP"
     echo -e "${DIM}Reusing app name from fly.toml: ${APP_NAME}${NC}"
+    # On reuse, keep the region fly.toml already carries — defaulting back to
+    # iad here would rewrite primary_region away from the existing Postgres's
+    # region, silently splitting app and DB. An explicit FLY_REGION still wins.
+    if [[ -z "$FLY_REGION" ]]; then
+        EXISTING_REGION="$(sed -nE 's/^primary_region = "(.*)"$/\1/p' fly.toml | head -1)"
+        [[ -n "$EXISTING_REGION" ]] && REGION="$EXISTING_REGION"
+    fi
+elif [[ -n "$EXISTING_APP" && "$EXISTING_APP" != "agentos" ]]; then
+    # A name this script didn't generate — continuing would overwrite fly.toml
+    # and silently abandon that app.
+    echo -e "${BOLD}fly.toml carries an app name this script doesn't manage: ${EXISTING_APP}${NC}"
+    echo -e "Restore the ${BOLD}agentos${NC} placeholder (or an agentos-* name from a previous run)"
+    echo -e "in fly.toml, or tear the app down first: ./scripts/fly/down.sh"
+    exit 1
 else
     SUFFIX="$(LC_ALL=C tr -dc 'a-z0-9' < /dev/urandom | head -c 6)"
     APP_NAME="agentos-${SUFFIX}"
@@ -263,6 +279,12 @@ if "$FLY" status --app "$PG_APP_NAME" &> /dev/null; then
     DB_PASSWORD=""
 else
     DB_PASSWORD="$(LC_ALL=C tr -dc 'a-zA-Z0-9' < /dev/urandom | head -c 24)"
+    # Persist immediately — between here and `fly secrets set` the password
+    # exists only in shell memory, and a crash in that window makes it
+    # unrecoverable (a re-run reuses the cluster with DB_PASSWORD empty).
+    ENV_FILE="${ENV_FILE:-.env.production}"
+    [[ -f "$ENV_FILE" ]] || touch "$ENV_FILE"
+    persist_env_var DB_PASS "$DB_PASSWORD" "$ENV_FILE"
     "$FLY" postgres create \
         --name "$PG_APP_NAME" \
         --org "$FLY_ORG" \
