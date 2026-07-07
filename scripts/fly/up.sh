@@ -139,7 +139,7 @@ ${line}"
     done < "$1"
 }
 
-# shellcheck disable=SC2034 # helper reused verbatim from the agentos-railway scripts
+# shellcheck disable=SC2034
 capture_pasted_jwt_verification_key() {
     local first_line="$1" line pasted="$1"
 
