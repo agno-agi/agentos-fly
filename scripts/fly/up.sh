@@ -17,8 +17,9 @@
 #    Fly app names are global, so this generates `agentos-<suffix>` and
 #    records it in fly.toml. The public URL is predictable pre-deploy
 #    (https://<app>.fly.dev), so AGENTOS_URL is set before the first deploy.
-#    Pauses for JWT_VERIFICATION_KEY/JWT_JWKS_FILE when production auth
-#    would otherwise prevent the first deploy from serving.
+#    Generates MCP_CONNECT_SECRET (chat-app OAuth) into the env file when
+#    missing, and pauses for JWT_VERIFICATION_KEY/JWT_JWKS_FILE when
+#    production auth would otherwise prevent the first deploy from serving.
 #
 #    Region defaults to iad (FLY_REGION=<region> to override); org defaults
 #    to personal (FLY_ORG=<org> to override — app and Postgres share it).
@@ -234,7 +235,7 @@ fi
 PG_APP_NAME="${APP_NAME}-db"
 
 echo ""
-echo -e "${BOLD}Creating app ${APP_NAME} (region ${REGION})...${NC}"
+echo -e "${ORANGE}▸${NC} ${BOLD}Creating app ${APP_NAME} (region ${REGION})${NC}"
 echo ""
 "$FLY" apps create "$APP_NAME" --org "$FLY_ORG" || echo -e "${DIM}App already exists or name taken — continuing${NC}"
 
@@ -255,8 +256,21 @@ sed -i.bak -E "s|^  AGENTOS_URL = .*|  AGENTOS_URL = \"${APP_URL}\"|" fly.toml &
 persist_env_var AGENTOS_URL "$APP_URL" "$ENV_FILE"
 echo -e "${DIM}Set AGENTOS_URL=${APP_URL} (fly.toml${ENV_FILE:+ + ${ENV_FILE}})${NC}"
 
+# MCP OAuth — claude.ai and ChatGPT (web) connect over OAuth only, and the
+# consent page is gated by MCP_CONNECT_SECRET, so the user must create the secret manually.
+# We generate a secret on behalf of the user when the env file doesn't have one.
+# Delivered as a Fly secret below — NEVER via fly.toml, which is committed.
+if [[ -z "$MCP_CONNECT_SECRET" ]]; then
+    MCP_CONNECT_SECRET="$(openssl rand -base64 32)"
+    export MCP_CONNECT_SECRET
+    ENV_FILE="${ENV_FILE:-.env.production}"
+    [[ -f "$ENV_FILE" ]] || : > "$ENV_FILE"
+    persist_env_var MCP_CONNECT_SECRET "$MCP_CONNECT_SECRET" "$ENV_FILE"
+    echo -e "${DIM}Generated MCP_CONNECT_SECRET -> ${ENV_FILE} + Fly secret (shown in the summary below)${NC}"
+fi
+
 echo ""
-echo -e "${BOLD}Creating Postgres (${PG_APP_NAME})...${NC}"
+echo -e "${ORANGE}▸${NC} ${BOLD}Creating Postgres (${PG_APP_NAME})${NC}"
 # pgvector: the stock postgres-flex image does NOT ship pgvector. Sessions and
 # memory work without it; knowledge bases (RAG) need it. Point FLY_PG_IMAGE at
 # a postgres-flex derivative with pgvector installed for full functionality
@@ -302,7 +316,7 @@ fi
 DB_HOST="${PG_APP_NAME}.flycast"
 
 echo ""
-echo -e "${BOLD}Setting secrets...${NC}"
+echo -e "${ORANGE}▸${NC} ${BOLD}Setting secrets${NC}"
 SECRET_ARGS=(
     "OPENAI_API_KEY=${OPENAI_API_KEY}"
     "DB_HOST=${DB_HOST}"
@@ -314,6 +328,8 @@ SECRET_ARGS=(
 # Only set DB_PASS when this run created the cluster; on reuse the existing
 # secret already matches the database.
 [[ -n "$DB_PASSWORD" ]] && SECRET_ARGS+=("DB_PASS=${DB_PASSWORD}")
+# Generated above (or carried in the env file) — the consent-page secret for MCP OAuth.
+[[ -n "$MCP_CONNECT_SECRET" ]] && SECRET_ARGS+=("MCP_CONNECT_SECRET=${MCP_CONNECT_SECRET}")
 [[ -n "$PARALLEL_API_KEY" ]] && SECRET_ARGS+=("PARALLEL_API_KEY=${PARALLEL_API_KEY}")
 [[ -n "$RUNTIME_ENV" ]] && SECRET_ARGS+=("RUNTIME_ENV=${RUNTIME_ENV}")
 [[ -n "$JWT_JWKS_FILE" ]] && SECRET_ARGS+=("JWT_JWKS_FILE=${JWT_JWKS_FILE}")
@@ -331,7 +347,7 @@ AUTH_REQUIRES_JWT=1
 # mint the key, save it, and have this first deploy come up serving.
 if [[ -n "$AUTH_REQUIRES_JWT" && -z "$JWT_VERIFICATION_KEY" && -z "$JWT_JWKS_FILE" && -t 0 ]]; then
     echo ""
-    echo -e "${BOLD}JWT_VERIFICATION_KEY not set${NC} — AgentOS won't serve production traffic without auth."
+    echo -e "${ORANGE}▸${NC} ${BOLD}JWT_VERIFICATION_KEY not set${NC} — AgentOS won't serve production traffic without auth."
     echo -e "  1. Open ${BOLD}https://os.agno.com${NC} -> Connect OS -> Live -> enter ${APP_URL}"
     echo -e "  2. Name it ${BOLD}Live AgentOS${NC}"
     echo -e "  3. Note: Live AgentOS Connections are a paid feature; use ${BOLD}PLATFORM30${NC} to get 1 month off"
@@ -370,7 +386,7 @@ elif [[ -n "$AUTH_REQUIRES_JWT" && -z "$JWT_JWKS_FILE" ]]; then
 fi
 
 echo ""
-echo -e "${BOLD}Deploying application...${NC}"
+echo -e "${ORANGE}▸${NC} ${BOLD}Deploying application${NC}"
 echo -e "${DIM}--ha=false is load-bearing: the Fly default creates two machines, which${NC}"
 echo -e "${DIM}doubles cost and runs two in-process schedulers double-firing every cron.${NC}"
 echo ""
@@ -380,8 +396,14 @@ echo ""
 echo -e "${BOLD}Done.${NC}"
 echo -e "${DIM}URL:            ${APP_URL}${NC}"
 echo -e "${DIM}Logs:           ${FLY} logs --app ${APP_NAME}${NC}"
-echo -e "${DIM}Sync env vars:  ./scripts/fly/env-sync.sh  (defaults to .env.production)${NC}"
-[[ -n "$APP_URL" ]] && echo -e "${DIM}Connect apps:   uvx agno connect --url ${APP_URL}  (Claude Desktop + coding agents; mints a service-account token — see README)${NC}"
+echo -e "${DIM}Sync env vars:  ./scripts/fly/env-sync.sh${NC}"
+[[ -n "$APP_URL" ]] && echo -e "${DIM}Connect apps:   uvx agno connect --url ${APP_URL}${NC}"
+if [[ -n "$APP_URL" && -n "$MCP_CONNECT_SECRET" ]]; then
+    echo -e "${DIM}Chat apps:      add ${APP_URL}/mcp as a custom connector in claude.ai / ChatGPT${NC}"
+    echo -e "${DIM}                (leave the optional OAuth client ID/secret fields empty).${NC}"
+    echo -e "${DIM}                Then click Connect and approve the consent page with this secret:${NC}"
+    echo -e "${BOLD}                ${MCP_CONNECT_SECRET}${NC}"
+fi
 echo -e "${DIM}Teardown:       ./scripts/fly/down.sh${NC}"
 echo -e "${DIM}Cost:           ~\$21/mo app (shared-cpu-2x/4GB) + ~\$4/mo Postgres — single${NC}"
 echo -e "${DIM}                machine by design; see the README cost note before enabling HA.${NC}"

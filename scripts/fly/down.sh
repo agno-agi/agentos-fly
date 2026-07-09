@@ -17,6 +17,7 @@
 set -e
 
 # Colors
+ORANGE='\033[38;5;208m'
 DIM='\033[2m'
 BOLD='\033[1m'
 RED='\033[31m'
@@ -45,7 +46,9 @@ fi
 PG_APP_NAME="${APP_NAME}-db"
 
 echo ""
-echo -e "${BOLD}This destroys:${NC}"
+echo -e "${ORANGE}▸${NC} ${BOLD}Fly Teardown${NC}"
+echo ""
+echo -e "This destroys:"
 echo -e "  - app       ${APP_NAME}"
 echo -e "  - postgres  ${PG_APP_NAME}  ${RED}(all data deleted)${NC}"
 echo ""
@@ -60,11 +63,11 @@ if [[ "$1" != "--yes" ]]; then
 fi
 
 echo ""
-echo -e "${BOLD}Destroying ${APP_NAME}...${NC}"
+echo -e "${DIM}> ${FLY} apps destroy ${APP_NAME} --yes${NC}"
 "$FLY" apps destroy "$APP_NAME" --yes || echo -e "${DIM}Destroy returned non-zero — verifying below${NC}"
 
 echo ""
-echo -e "${BOLD}Destroying ${PG_APP_NAME}...${NC}"
+echo -e "${DIM}> ${FLY} apps destroy ${PG_APP_NAME} --yes${NC}"
 "$FLY" apps destroy "$PG_APP_NAME" --yes || echo -e "${DIM}Destroy returned non-zero — verifying below${NC}"
 
 # An app only counts as gone when Fly says so. `fly status` also exits
@@ -79,7 +82,7 @@ app_confirmed_gone() {
         return 0
     fi
     echo ""
-    echo -e "${BOLD}Couldn't verify ${app} is gone${NC} — fly status failed with:"
+    echo -e "${RED}${BOLD}Couldn't verify ${app} is gone${NC} — fly status failed with:"
     echo -e "${DIM}${output}${NC}"
     echo -e "fly.toml keeps the app name so you can retry. Check: ${FLY} apps list"
     exit 1
@@ -90,7 +93,7 @@ app_confirmed_gone() {
 # name and leave the resources running with no record of them.
 if ! app_confirmed_gone "$APP_NAME" || ! app_confirmed_gone "$PG_APP_NAME"; then
     echo ""
-    echo -e "${BOLD}Teardown incomplete${NC} — at least one app still exists. fly.toml keeps"
+    echo -e "${RED}${BOLD}Teardown incomplete${NC} — at least one app still exists. fly.toml keeps"
     echo -e "the app name so you can retry. Check: ${FLY} apps list"
     exit 1
 fi

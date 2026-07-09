@@ -18,6 +18,7 @@
 set -e
 
 # Colors
+ORANGE='\033[38;5;208m'
 DIM='\033[2m'
 BOLD='\033[1m'
 NC='\033[0m'
@@ -46,7 +47,9 @@ if [[ -z "$APP_NAME" || "$APP_NAME" == "agentos" ]]; then
 fi
 
 echo ""
-echo -e "${BOLD}Syncing env vars from ${ENV_FILE} to Fly app ${APP_NAME}...${NC}"
+echo -e "${ORANGE}▸${NC} ${BOLD}Syncing env vars${NC}"
+echo ""
+echo -e "${DIM}> ${ENV_FILE} -> Fly app ${APP_NAME}${NC}"
 echo ""
 
 # Parse the env file, treating PEM blocks (and other multiline values)

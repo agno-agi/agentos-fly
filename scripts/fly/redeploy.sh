@@ -14,6 +14,7 @@
 set -e
 
 # Colors
+ORANGE='\033[38;5;208m'
 DIM='\033[2m'
 BOLD='\033[1m'
 NC='\033[0m'
@@ -35,7 +36,9 @@ if [[ -z "$APP_NAME" || "$APP_NAME" == "agentos" ]]; then
 fi
 
 echo ""
-echo -e "${BOLD}Redeploying ${APP_NAME}...${NC}"
+echo -e "${ORANGE}▸${NC} ${BOLD}Redeploying ${APP_NAME}${NC}"
+echo ""
+echo -e "${DIM}> ${FLY} deploy --ha=false${NC}"
 echo ""
 # --ha=false is load-bearing: the Fly default creates two machines, which
 # doubles cost and runs two in-process schedulers double-firing every cron.
