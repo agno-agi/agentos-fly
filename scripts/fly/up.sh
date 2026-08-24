@@ -381,7 +381,7 @@ if [[ -n "$JWT_VERIFICATION_KEY" ]]; then
     "$FLY" secrets set --app "$APP_NAME" --stage "JWT_VERIFICATION_KEY=${JWT_VERIFICATION_KEY}" > /dev/null
 elif [[ -n "$AUTH_REQUIRES_JWT" && -z "$JWT_JWKS_FILE" ]]; then
     echo ""
-    echo -e "${DIM}Deploying without JWT auth config — the app will refuse traffic until${NC}"
+    echo -e "${DIM}Deploying without JWT auth config — the container exits on boot and the machine crash-loops after cutover until${NC}"
     echo -e "${DIM}you add JWT_VERIFICATION_KEY or JWT_JWKS_FILE to ${ENV_FILE:-.env.production} and run ./scripts/fly/env-sync.sh.${NC}"
 fi
 
