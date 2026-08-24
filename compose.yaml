@@ -1,7 +1,7 @@
 services:
   agentos-db:
     image: agnohq/pgvector:18
-    container_name: agentos-db
+    container_name: ${COMPOSE_PROJECT_PREFIX:-agentos}-db
     restart: unless-stopped
     ports:
       - "5432:5432"
@@ -18,7 +18,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: agentos-api
+    container_name: ${COMPOSE_PROJECT_PREFIX:-agentos}-api
     image: ${IMAGE_NAME:-agentos}:${IMAGE_TAG:-latest}
     # --reload-dir limits the watcher to dirs that contain runtime code.
     command: >

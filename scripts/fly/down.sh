@@ -52,6 +52,12 @@ echo -e "This destroys:"
 echo -e "  - app       ${APP_NAME}"
 echo -e "  - postgres  ${PG_APP_NAME}  ${RED}(all data deleted)${NC}"
 echo ""
+# Destroying a Fly app deletes the images in its registry namespace, and the
+# pgvector Postgres image is pushed under the app's repository. A later up.sh
+# rebuilds it automatically, so this is a note, not a warning.
+echo -e "${DIM}The pgvector Postgres image lives in ${APP_NAME}'s registry and goes with it."
+echo -e "The next ./scripts/fly/up.sh rebuilds and pushes it (Docker must be running).${NC}"
+echo ""
 
 if [[ "$1" != "--yes" ]]; then
     printf "Type the app name (%s) to confirm: " "$APP_NAME"
