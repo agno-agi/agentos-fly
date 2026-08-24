@@ -45,6 +45,8 @@ Run `cp example.env .env`, then help the user set their `OPENAI_API_KEY`:
 
 Start the platform with `docker compose up -d --build`, then poll http://localhost:8000/docs until it returns 200 (the first build takes a few minutes). If it never comes up, read `docker compose logs agentos-api` and fix what you find.
 
+**A name conflict on `agentos-api` / `agentos-db` means another AgentOS clone is on this machine** — the container names are machine-global. Check what holds the name (`docker ps -a --filter name=agentos`) and whether it belongs to a different project (`docker inspect <name> --format '{{index .Config.Labels "com.docker.compose.project"}}'`) before touching it. If the other project is still wanted, set `COMPOSE_PROJECT_PREFIX` in `.env` and boot alongside it; renaming the stopped containers frees the names without deleting data, and their volumes stay with the old project either way. Never delete another project's containers or volumes to clear the name without asking.
+
 ## 4. Prove it
 
 Run `./scripts/mcp_check.sh` — it should print "MCP OK" and a real agent answer. Quote that answer to the user — it's their platform manager talking. And let them know the platform's MCP server is live.
@@ -114,6 +116,10 @@ Then follow the skill through its smoke test: work out what to build, generate t
 Then come back here: stop before that skill's own closing and let Steps 7 and 8 replace it, so the handover lands once.
 
 If they push back or want to stop, that's fine — carry on and adapt the remaining steps.
+
+## 6b. Leave them able to validate
+
+`./scripts/format.sh` and `./scripts/validate.sh` run on the host and need `.venv`, which a fresh clone does not have — so the first `/extend-agent` or `/improve-agent` session hits a missing venv. Run `./scripts/venv_setup.sh` once here (it is a background-able one-off; carry on narrating while it installs), or tell the user the one command if it fails. `uvx ruff format` / `uvx ruff check` are the fallback when the venv cannot be built.
 
 ## 7. Make it yours
 

@@ -271,19 +271,35 @@ fi
 
 echo ""
 echo -e "${ORANGE}▸${NC} ${BOLD}Creating Postgres (${PG_APP_NAME})${NC}"
-# pgvector: the stock postgres-flex image does NOT ship pgvector. Sessions and
-# memory work without it; knowledge bases (RAG) need it. Point FLY_PG_IMAGE at
-# a postgres-flex derivative with pgvector installed for full functionality
-# (Dockerfile: FROM flyio/postgres-flex:17 + apt-get install -y
-# postgresql-17-pgvector) — see "Deploying to Fly.io" in AGENTS.md.
+# pgvector: the stock postgres-flex image does NOT ship pgvector, and AgentOS
+# does not start without it. app/knowledge.py builds shared_knowledge at module
+# scope, so Knowledge.__post_init__ runs CREATE EXTENSION vector during the
+# import in app/main.py: with a stock cluster the process exits 1 before uvicorn
+# binds and the machine crash-loops — sessions and memory included, not just
+# knowledge bases. So a pgvector image is built and pushed by default.
+#
+# FLY_PG_IMAGE overrides with an image you already have; FLY_PG_VERSION pins the
+# postgres-flex major (default 18, matching what `fly postgres create` provisions).
 PG_IMAGE_ARGS=()
 if [[ -n "$FLY_PG_IMAGE" ]]; then
     PG_IMAGE_ARGS=(--image-ref "$FLY_PG_IMAGE")
     echo -e "${DIM}Unmanaged Fly Postgres from FLY_PG_IMAGE=${FLY_PG_IMAGE}${NC}"
+elif "$FLY" status --app "$PG_APP_NAME" &> /dev/null; then
+    # Existing cluster: `fly postgres create` is skipped below, so no image is needed.
+    :
 else
-    echo -e "${DIM}Unmanaged Fly Postgres (stock postgres-flex image).${NC}"
-    echo -e "${BOLD}Note:${NC} stock postgres-flex has no pgvector — sessions/memory work, knowledge"
-    echo -e "bases won't until you recreate with FLY_PG_IMAGE set to a pgvector-enabled image."
+    echo -e "${DIM}Building a pgvector-enabled Postgres image (required — see the comment above).${NC}"
+    if BUILT_IMAGE="$("$(dirname "$0")/pgvector/build.sh" "$APP_NAME" "${FLY_PG_VERSION:-18}")"; then
+        PG_IMAGE_ARGS=(--image-ref "$BUILT_IMAGE")
+        echo -e "${DIM}Unmanaged Fly Postgres from ${BUILT_IMAGE}${NC}"
+    else
+        echo ""
+        echo -e "${BOLD}Could not build the pgvector Postgres image.${NC}"
+        echo -e "AgentOS will not boot on a stock cluster: the knowledge base runs"
+        echo -e "CREATE EXTENSION vector at import and the app exits before serving."
+        echo -e "Fix Docker and re-run, or pass FLY_PG_IMAGE=<your pgvector image>."
+        exit 1
+    fi
 fi
 echo ""
 if "$FLY" status --app "$PG_APP_NAME" &> /dev/null; then

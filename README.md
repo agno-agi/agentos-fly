@@ -110,7 +110,7 @@ This provisions the app and an unmanaged Fly Postgres on the same private networ
 
 > **Cost note.** Default sizing is `shared-cpu-2x` with 4 GB (~$21/mo) plus a small Postgres machine (~$4/mo). `performance-2x` (~$62/mo) is the dedicated-CPU option — edit [`fly.toml`](fly.toml).
 
-> **pgvector.** Fly's stock `postgres-flex` image does **not** ship pgvector: sessions and memory work out of the box, but knowledge bases (RAG) need the extension. Set `FLY_PG_IMAGE` to a postgres-flex derivative with pgvector installed before running `up.sh` — the image is a two-line Dockerfile (`FROM flyio/postgres-flex:17` + `apt-get install -y postgresql-17-pgvector`). Without it, `up.sh` prints a warning and everything except knowledge bases works.
+> **pgvector.** Fly's stock `postgres-flex` image does **not** ship pgvector, and AgentOS does not boot without it — the knowledge base runs `CREATE EXTENSION vector` at import, so on a stock cluster the app exits before serving and the machine crash-loops. `up.sh` therefore builds and pushes a pgvector image ([`scripts/fly/pgvector/`](scripts/fly/pgvector/)) before creating Postgres; Docker must be running. Set `FLY_PG_IMAGE` to use an image you already have, or `FLY_PG_VERSION` to pin the postgres-flex major (default `18`).
 
 ### 3. Production Auth
 
