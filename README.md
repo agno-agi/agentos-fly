@@ -188,8 +188,10 @@ You'll need Fly CLI with `fly auth login` completed, and OpenSSL.
 [ -f .env.production ] || cp example.env .env.production
 ```
 
-Add `OPENAI_API_KEY` and any other model keys you use. Keep `RUNTIME_ENV=prd`
-or leave it unset. The scripts read `.env.production` before `.env`.
+Add `OPENAI_API_KEY` and any other model keys you use, such as `ANTHROPIC_API_KEY`
+or `CLAUDE_CODE_OAUTH_TOKEN` for Claude Engineer. Keep `RUNTIME_ENV=prd` or leave
+it unset. The scripts read `.env.production` before `.env` and stage every key in
+the file as a Fly secret.
 
 Before running setup, set `FLY_PG_IMAGE` to a Fly-compatible PostgreSQL image with pgvector installed. The stock Fly Postgres image lacks pgvector, which this template needs for its knowledge base. Set the app name and region in [fly.toml](fly.toml).
 
@@ -249,10 +251,12 @@ Deletes the app and its PostgreSQL service, including their volumes. Review the 
 ### Sandbox storage
 
 Local Docker sandbox instructions are in the [sandbox guide](docs/sandboxes.md).
-The production deployment does not provision sandbox checkpoint storage.
-Before enabling AWS AgentCore, configure persistent storage mounted at `/data`
-on the API service and give it AWS access. If your deployment cannot provide
-that mount, leave AgentCore disabled. Keep one API instance.
+The production deployment does not attach sandbox checkpoint storage by default.
+Before enabling AWS AgentCore, create a Fly volume in the app's region and
+uncomment the `[mounts]` block in [fly.toml](fly.toml) so it is mounted at `/data`,
+redeploy, and put the AWS credentials AgentCore needs in `.env.production` so the
+sync stages them as secrets. If you skip the volume, leave AgentCore disabled.
+Keep one machine.
 
 ## Verify and develop
 

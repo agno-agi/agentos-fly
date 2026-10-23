@@ -86,6 +86,31 @@ ${line}"
     current_value="${current_value#\'}"
     current_value="${current_value%\'}"
 
+    case "$current_key" in
+        AWS_PROFILE)
+            # Names a profile on this machine; meaningless inside the container.
+            echo -e "${DIM}  Skipping AWS_PROFILE (host-only; give the app AWS credentials directly)${NC}"
+            current_key=""
+            current_value=""
+            continue
+            ;;
+        OPENAI_API_KEY)
+            if [[ -z "$current_value" || "$current_value" == "sk-***" ]]; then
+                echo "OPENAI_API_KEY not set in ${ENV_FILE} — refusing to sync a placeholder."
+                exit 1
+            fi
+            ;;
+        ANTHROPIC_API_KEY)
+            # example.env ships this as a placeholder; never deploy it as a value.
+            if [[ -z "$current_value" || "$current_value" == "sk-***" ]]; then
+                echo -e "${DIM}  Skipping ANTHROPIC_API_KEY (placeholder)${NC}"
+                current_key=""
+                current_value=""
+                continue
+            fi
+            ;;
+    esac
+
     echo -e "${DIM}  Staging ${current_key}${NC}"
     SECRET_ARGS+=("${current_key}=${current_value}")
 
