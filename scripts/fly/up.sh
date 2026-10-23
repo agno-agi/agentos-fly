@@ -12,7 +12,8 @@
 #    Prerequisites:
 #      - flyctl installed (https://fly.io/docs/flyctl/install/)
 #      - Logged in via `fly auth login`
-#      - OPENAI_API_KEY set in environment (or .env / .env.production)
+#      - OPENAI_API_KEY set in environment (or .env / .env.production);
+#        ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN there too for Claude Engineer
 #
 #    Fly app names are global, so this generates `agentos-<suffix>` and
 #    records it in fly.toml. The public URL is predictable pre-deploy
@@ -191,10 +192,12 @@ if ! "$FLY" auth whoami &> /dev/null; then
     exit 1
 fi
 
-if [[ -z "$OPENAI_API_KEY" ]]; then
+if [[ -z "$OPENAI_API_KEY" || "$OPENAI_API_KEY" == "sk-***" ]]; then
     echo "OPENAI_API_KEY not set. Add to .env (or .env.production) or export it."
     exit 1
 fi
+# example.env ships the Claude key as a placeholder; never deploy it as a value.
+[[ "$ANTHROPIC_API_KEY" == "sk-***" ]] && ANTHROPIC_API_KEY=""
 
 if [[ ! -f fly.toml ]]; then
     echo "fly.toml not found. Run this script from the repo root: ./scripts/fly/up.sh"
@@ -335,6 +338,9 @@ SECRET_ARGS=(
 [[ -n "$JWT_JWKS_FILE" ]] && SECRET_ARGS+=("JWT_JWKS_FILE=${JWT_JWKS_FILE}")
 [[ -n "$SLACK_BOT_TOKEN" ]] && SECRET_ARGS+=("SLACK_BOT_TOKEN=${SLACK_BOT_TOKEN}")
 [[ -n "$SLACK_SIGNING_SECRET" ]] && SECRET_ARGS+=("SLACK_SIGNING_SECRET=${SLACK_SIGNING_SECRET}")
+# Claude Engineer authenticates with one of these two; Codex uses OPENAI_API_KEY.
+[[ -n "$ANTHROPIC_API_KEY" ]] && SECRET_ARGS+=("ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}")
+[[ -n "$CLAUDE_CODE_OAUTH_TOKEN" ]] && SECRET_ARGS+=("CLAUDE_CODE_OAUTH_TOKEN=${CLAUDE_CODE_OAUTH_TOKEN}")
 # --stage: queue the values without a restart; the deploy below picks them up.
 "$FLY" secrets set --app "$APP_NAME" --stage "${SECRET_ARGS[@]}" > /dev/null
 echo -e "${DIM}Staged ${#SECRET_ARGS[@]} secrets${NC}"
