@@ -193,7 +193,15 @@ or `CLAUDE_CODE_OAUTH_TOKEN` for Claude Engineer. Keep `RUNTIME_ENV=prd` or leav
 it unset. The scripts read `.env.production` before `.env` and stage every key in
 the file as a Fly secret.
 
-Before running setup, set `FLY_PG_IMAGE` to a Fly-compatible PostgreSQL image with pgvector installed. The stock Fly Postgres image lacks pgvector, which this template needs for its knowledge base. Set the app name and region in [fly.toml](fly.toml).
+Before running setup, set `FLY_PG_IMAGE` to a Fly-compatible PostgreSQL image with
+pgvector installed. The stock Fly Postgres image lacks pgvector, which this
+template needs for its knowledge base.
+
+For a new deployment, leave the app name as `agentos` in [fly.toml](fly.toml).
+The setup script creates a unique name and saves it there. To choose a region,
+set `FLY_REGION` in `.env.production` (for example, `FLY_REGION=lhr`); the default
+is `iad`. Later runs reuse the saved app name and region unless you set
+`FLY_REGION`.
 
 ### 2. Deploy and set up authentication
 
