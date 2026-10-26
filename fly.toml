@@ -24,14 +24,6 @@ primary_region = "iad"
   WAIT_FOR_DB = "True"
   AGENTOS_URL = "https://agentos.fly.dev"
 
-# AgentCore sandbox checkpoints need a persistent /data mount (docs/sandboxes.md).
-# Create the volume in the app's region first, then uncomment to attach it:
-#   fly volumes create agentos_checkpoints --size 10 --region <primary_region> --app <app>
-# The volume lives and dies with the app (down.sh destroys both).
-# [mounts]
-#   source = "agentos_checkpoints"
-#   destination = "/data"
-
 [http_service]
   internal_port = 8000
   force_https = true
