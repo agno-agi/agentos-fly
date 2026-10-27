@@ -94,6 +94,13 @@ ${line}"
             current_value=""
             continue
             ;;
+        FLY_*)
+            # Deploy settings read by up.sh (region, org, Postgres image), not the app.
+            echo -e "${DIM}  Skipping ${current_key} (deploy setting for up.sh)${NC}"
+            current_key=""
+            current_value=""
+            continue
+            ;;
         OPENAI_API_KEY)
             if [[ -z "$current_value" || "$current_value" == "sk-***" ]]; then
                 echo "OPENAI_API_KEY not set in ${ENV_FILE} — refusing to sync a placeholder."

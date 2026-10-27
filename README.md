@@ -190,7 +190,7 @@ If you use sandboxes, also set the repository URL and branch in
 Ask your coding agent to follow [deploy-platform](.agents/skills/deploy-platform/SKILL.md),
 or use the steps below.
 
-You'll need Fly CLI with `fly auth login` completed, and OpenSSL.
+You'll need Fly CLI with `fly auth login` completed, OpenSSL, and Docker running.
 
 ### 1. Set your production settings
 
@@ -200,12 +200,13 @@ You'll need Fly CLI with `fly auth login` completed, and OpenSSL.
 
 Add `OPENAI_API_KEY` and any other model keys you use, such as `ANTHROPIC_API_KEY`
 or `CLAUDE_CODE_OAUTH_TOKEN` for Claude Engineer. Keep `RUNTIME_ENV=prd` or leave
-it unset. The scripts read `.env.production` before `.env` and stage every key in
-the file as a Fly secret.
+it unset. The scripts read `.env.production` before `.env` and upload its keys as
+Fly secrets, except deploy settings that start with `FLY_`.
 
-Before running setup, set `FLY_PG_IMAGE` to a Fly-compatible PostgreSQL image with
-pgvector installed. The stock Fly Postgres image lacks pgvector, which this
-template needs for its knowledge base.
+The stock Fly Postgres image lacks pgvector, and the API cannot start without it.
+The setup script builds a PostgreSQL 18 image with pgvector, pushes it to the
+app's Fly registry and creates the database from it. Set `FLY_PG_IMAGE` to use an
+existing pgvector image instead, or `FLY_PG_VERSION` for another major version.
 
 For a new deployment, leave the app name as `agentos` in [fly.toml](fly.toml).
 The setup script creates a unique name and saves it there. To choose a region,
@@ -262,9 +263,12 @@ Try asking OS Manager about the platform to check that the connection works.
 | --- | --- |
 | Deploy code changes | `./scripts/fly/redeploy.sh` |
 | Upload production settings | `./scripts/fly/env-sync.sh` |
+| Remove a setting | `fly secrets unset NAME` |
 | Remove the deployment | `./scripts/fly/down.sh` |
 
-Deletes the app and its PostgreSQL service, including their volumes. Review the resources listed before confirming deletion.
+Removing a line from `.env.production` does not remove the Fly secret.
+`down.sh` deletes the app, its PostgreSQL service and their volumes, and the
+pgvector image in the app's registry. Review the resources listed before confirming deletion.
 
 ### Sandbox storage
 

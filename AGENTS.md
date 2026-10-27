@@ -141,6 +141,8 @@ Use the deployment skill and [deployment instructions](README.md#deploy-in-produ
 Deployment target: Fly.io. Preserve its deploy layer and provider-specific
 settings. The initial deployment uses one API instance, persistent PostgreSQL and
 production token verification. Follow docs/scaling.md when adding replicas.
+Fly Postgres must include pgvector: `up.sh` builds a postgres-flex 18 image with it,
+because the API cannot start on the stock image.
 Use the production env file described in the README; never deploy `RUNTIME_ENV=dev`.
 Review existing resources before provisioning and verify deployment after changes.
 

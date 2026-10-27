@@ -1,90 +1,126 @@
 ---
 name: deploy-platform
-description: Deploy this AgentOS using its own provider instructions, configure JWT verification, and verify the public service. Use for first deployment, redeployment, or production configuration changes.
+description: Deploy this AgentOS to Fly.io with scripts/fly, configure JWT verification, and verify the public service. Use for first deployment, redeployment, or production configuration changes on Fly.
 ---
 
-# Deploy the Platform
+# Deploy the Platform to Fly.io
 
-Read `AGENTS.md`, the README deployment section, and this repository's deploy
-configuration and scripts. Use those files to identify the provider and its exact
-commands, required CLI versions, environment file, and teardown behavior.
-Do not assume every template has deploy scripts or supports the same flags.
-For Docker or an existing Kubernetes cluster, follow the repository's Compose or
-Helm instructions.
-
-Never print credentials or the MCP connect secret. The JWT verification key is
-public and may be shared to complete configuration.
+Read `AGENTS.md`, the [README deployment section](../../../README.md#deploy-in-production),
+`fly.toml` and `scripts/fly/`. The deploy layer is four scripts: `up.sh` provisions
+and deploys, `redeploy.sh` ships code, `env-sync.sh` uploads settings and `down.sh`
+tears everything down. Never print credentials, `DB_PASS` or `MCP_CONNECT_SECRET`.
+The JWT verification key is public and may be shared.
 
 ## 1. Prepare
 
-- Check the required tools and the authenticated provider account. Interactive
-  logins belong in the user's terminal.
-- Confirm the intended workspace, account, project, region, or cluster context
-  before making changes. Use the inputs required by this repository's commands.
-- Set up the project environment if the deploy scripts need it. Use the production
-  env file documented in the README; create it from `example.env` only if absent.
-  Configure credentials without printing them. Check how the deploy scripts load
-  settings rather than assuming they read `.env` or exported shell variables.
-- Keep production authentication enabled. Do not upload `RUNTIME_ENV=dev`.
-  Configure `JWT_VERIFICATION_KEY` or a `JWT_JWKS_FILE` available on the server.
-- If a sandbox is requested, configure its provider and `REPOSITORY` in
-  `app/sandbox.py` using the [sandbox setup guide](../../../docs/sandboxes.md).
-  AgentCore needs an existing runtime, host AWS access, and an S3 checkpoint bucket.
-  Configure its bucket/prefix in app/sandbox.py; do not attach an API disk or use
-  PostgreSQL for checkpoint archives. Bedrock settings and private
-  repository credentials must be supplied explicitly through the provider's `env`.
+- `fly version` and `fly auth whoami` must succeed. Logging in is interactive:
+  ask the user to run `fly auth login` in their own terminal.
+- `docker info` must succeed. `up.sh` builds the pgvector Postgres image locally
+  unless `FLY_PG_IMAGE` is set or the database already exists.
+- Confirm the Fly organization (`FLY_ORG`, default `personal`) and region
+  (`FLY_REGION`, default `iad`). The app and Postgres share both.
+- Create `.env.production` from `example.env` only if it is absent. Have the user
+  add `OPENAI_API_KEY`, and `ANTHROPIC_API_KEY` or `CLAUDE_CODE_OAUTH_TOKEN` for
+  Claude Engineer, in their editor. Check keys are set without reading values back.
+  Leave `RUNTIME_ENV` unset; never deploy `dev`.
+- `FLY_*` lines in the env file are deploy settings for `up.sh`; `env-sync.sh`
+  does not upload them.
+- Sandboxes: Fly machines have no Docker daemon, so the Docker sandbox cannot run
+  there. For hosted isolation, configure AgentCore and S3 in `app/sandbox.py` per
+  the [sandbox guide](../../../docs/sandboxes.md#aws-agentcore-sandbox) and add
+  AWS credentials to the env file. `AWS_PROFILE` is host-only and is not uploaded.
   Never put secret values in source.
-- See [docs/scaling.md](../../../docs/scaling.md) for current scaling guidance.
 
-## 2. Choose first deployment or update
+## 2. Find an existing deployment
 
-Use the provider's status/list commands, saved project identifiers, and local
-configuration to find an existing deployment. A failed health check does not mean
-its resources are gone. Resolve authentication, permission, and network errors
-before deciding to create anything. Link an existing project where required.
+`app` in `fly.toml` records the deployment. `agentos` is the unprovisioned
+placeholder; `agentos-<suffix>` was written by `up.sh`. The placeholder alone does
+not prove nothing exists: `down.sh` resets it, but so does switching branches or
+discarding local changes. Run `fly apps list` and look for `agentos-*` and
+`agentos-*-db` apps first. If one exists, restore its name, `primary_region` and
+`AGENTOS_URL` in `fly.toml` instead of provisioning a second deployment.
 
-For a new deployment, explain which resources will be created, their billing,
-and the actual teardown command and data it deletes. Run the README's first-deploy
-procedure with the intended account and target explicitly selected.
-For owned infrastructure, configure its public URL and JWT key before first boot.
+- **Existing deployment:** use `redeploy.sh` for code and `env-sync.sh` for
+  settings (step 5). Do not run `up.sh` to recover from a failed deploy unless it
+  is resuming the same app name; it reuses the app, the database and its password.
+- **New deployment:** before running anything, tell the user what `up.sh`
+  creates and what it costs: the app `agentos-<suffix>` (shared-cpu-2x, 4 GB,
+  about $21/mo), the Postgres app `agentos-<suffix>-db` (10 GB volume, about $4/mo)
+  and the pgvector image in the app's registry. `down.sh` deletes all three,
+  including the database data.
 
-For an update, follow the README's code and environment update commands. Read the
-scripts to establish their order and whether updating settings also triggers a
-redeploy. Use flags such as `--no-deploy` only when implemented by that script.
-If a command fails, inspect existing resources and any partial settings changes
-before retrying. Do not create a second project to recover from a failed deploy.
+## 3. Run up.sh
 
-## 3. Complete authentication and settings
+`up.sh` generates the app name and writes `app`, `primary_region` and `AGENTOS_URL`
+into `fly.toml`. It creates the app, builds and pushes
+`registry.fly.io/<app>:pgvector-18`, creates Postgres from that image, stages
+secrets, then deploys one machine with `--ha=false`. In the template repository,
+leave the rewritten `fly.toml` uncommitted; in the user's own repository, commit
+it so later commands target the app.
 
-Some providers create a URL before the API can start. Follow this repository's
-handoff: use that URL to connect a Live OS at https://os.agno.com/?ref=fly-template, enable token-based
-JWT authorization, and obtain the public verification key. Save the full key as a
-quoted multiline `JWT_VERIFICATION_KEY` in the production settings, or configure
-`JWT_JWKS_FILE`. Then use the documented sync/deploy commands to finish.
-Do not treat an exit code or missing-key stop as identical across providers.
+The script pauses for the JWT key only when it has a terminal. From a coding agent
+there is no terminal: it skips the prompt and deploys without a key, and the
+machine exits at startup until the key arrives. Choose one:
 
-Ensure `AGENTOS_URL` is the public HTTPS URL used by the scheduler and MCP OAuth.
-Keep `MCP_CONNECT_SECRET` in the production settings for browser MCP connections.
-Check how this provider clears remote variables; removing a local line may not
-remove the saved value. Database credential rotation is separate from updating
-API settings. Disable a sandbox by returning `None` from `sandbox_provider()` and
-redeploying.
+- **Preferred:** ask the user to run `./scripts/fly/up.sh` in their own terminal
+  and complete the prompt (step 4).
+- **Agent-run:** tell the user first that the machine will restart repeatedly until
+  the key is added, run `up.sh`, confirm in `fly logs --no-tail` that the only
+  startup error is the missing JWT configuration, then complete step 4 and run
+  `./scripts/fly/env-sync.sh`.
 
-## 4. Verify and hand over
+If the pgvector build fails, `up.sh` stops before creating Postgres. Fix Docker or
+set `FLY_PG_IMAGE`, then re-run; it reuses the saved app name. `FLY_PG_VERSION`
+affects new clusters only. Major versions do not upgrade in place: an existing
+cluster keeps its version until it is recreated or migrated deliberately.
 
-Build submission is not successful deployment. Inspect bounded provider logs and
-test the public URL: `/health` must succeed; unauthenticated `/agents` requests and
-MCP initialization POSTs must reject access. A plain `GET /mcp` may return public
-server-card metadata; it does not test authorization. With MCP OAuth enabled,
-verify the POST's Bearer challenge. Exercise an authenticated request with an
-existing token, then confirm the UI connects at
-[os.agno.com](https://os.agno.com/?ref=fly-template).
+## 4. Configure JWT verification
 
-Model prompts spend calls; report exactly what ran. Engineer HTTP runs, delegation,
+The URL is `https://<app>.fly.dev`. Have the user open
+[os.agno.com](https://os.agno.com/?ref=fly-template), choose **Connect OS** →
+**Live**, enter the URL, turn on token-based authorization (JWT) and copy the
+public key. Live connections are a paid feature. The key goes into the script's
+prompt, or into `.env.production` as a quoted multi-line `JWT_VERIFICATION_KEY`
+followed by `./scripts/fly/env-sync.sh`.
+
+## 5. Update settings and code
+
+| Change | Command |
+| --- | --- |
+| Code | `./scripts/fly/redeploy.sh` (always `--ha=false`; never run plain `fly deploy`) |
+| Settings | `./scripts/fly/env-sync.sh` (one restart for all keys) |
+| Remove a setting | `fly secrets unset NAME` (deleting the env-file line does not remove it) |
+
+`fly secrets list` marks values that are set but not yet deployed as staged. Never
+raise the machine count with `fly scale count` or enable HA: each machine runs the
+scheduler, so every cron would fire twice. Follow [docs/scaling.md](../../../docs/scaling.md)
+before adding replicas. Rotating the database password is separate from `env-sync.sh`.
+
+## 6. Verify and hand over
+
+A finished deploy command is not a working service. Check:
+
+- `fly status`: one machine, `started`, in the chosen region.
+- `fly logs --no-tail`: `Application startup complete`, the JWT middleware, and no
+  `vector`, JWT or database errors.
+- `fly secrets list`: nothing left staged.
+- Over HTTPS: `/health` returns 200; unauthenticated `/agents` and MCP initialize
+  POSTs are rejected, and the POST's `WWW-Authenticate` header carries the Bearer
+  challenge. A plain `GET /mcp` may return public metadata and proves nothing.
+- An authenticated request with an existing token, and the Live OS in the UI.
+
+A new `*.fly.dev` name can take minutes to resolve, and resolvers on public or
+captive Wi-Fi can intercept DNS and keep a stale miss. Before suspecting the app,
+test it directly: `curl --resolve <app>.fly.dev:443:<ipv4 from fly ips list> https://<app>.fly.dev/health`,
+or resolve with `curl --doh-url https://cloudflare-dns.com/dns-query`. Do not
+release or reallocate IPs to fix slow DNS. Check the Fly status page for
+platform incidents when results don't add up.
+
+Model prompts spend calls; report exactly what ran. Engineer HTTP runs, delegation
 and Company Task completion need separate verification before claiming they work.
 
-Provide the URL, verification results, and this repository's commands for code
-updates, settings, logs, and teardown. For browser MCP, use `<AGENTOS_URL>/mcp` and
-tell the user to enter `MCP_CONNECT_SECRET` from the production settings into the
+Hand over the URL, the results above and the commands in step 5, plus
+`fly logs` and `./scripts/fly/down.sh`. For browser MCP, use `<AGENTOS_URL>/mcp`
+and tell the user to enter `MCP_CONNECT_SECRET` from `.env.production` on the
 consent page; do not print it. For coding clients, use
 `uvx agno connect --url <AGENTOS_URL>`.

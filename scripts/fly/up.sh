@@ -12,6 +12,8 @@
 #    Prerequisites:
 #      - flyctl installed (https://fly.io/docs/flyctl/install/)
 #      - Logged in via `fly auth login`
+#      - Docker running, to build the pgvector Postgres image (skipped when
+#        FLY_PG_IMAGE is set or the Postgres app already exists)
 #      - OPENAI_API_KEY set in environment (or .env / .env.production);
 #        ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN there too for Claude Engineer
 #
@@ -24,6 +26,8 @@
 #
 #    Region defaults to iad (FLY_REGION=<region> to override); org defaults
 #    to personal (FLY_ORG=<org> to override — app and Postgres share it).
+#    Postgres runs postgres-flex 18 with pgvector (FLY_PG_VERSION=<major> to
+#    pin another major; FLY_PG_IMAGE=<image> to use an existing image).
 #
 ############################################################################
 
@@ -237,6 +241,14 @@ else
 fi
 PG_APP_NAME="${APP_NAME}-db"
 
+# A new cluster needs the pgvector image built below. Check Docker before
+# creating anything so a stopped daemon doesn't leave a half-provisioned app.
+if [[ -z "$FLY_PG_IMAGE" ]] && ! "$FLY" status --app "$PG_APP_NAME" &> /dev/null && ! docker info &> /dev/null; then
+    echo "Docker is not running — needed to build the pgvector Postgres image."
+    echo "Start Docker and re-run, or set FLY_PG_IMAGE to an existing pgvector image."
+    exit 1
+fi
+
 echo ""
 echo -e "${ORANGE}▸${NC} ${BOLD}Creating app ${APP_NAME} (region ${REGION})${NC}"
 echo ""
@@ -274,19 +286,31 @@ fi
 
 echo ""
 echo -e "${ORANGE}▸${NC} ${BOLD}Creating Postgres (${PG_APP_NAME})${NC}"
-# pgvector: the stock postgres-flex image does NOT ship pgvector. Sessions and
-# memory work without it; knowledge bases (RAG) need it. Point FLY_PG_IMAGE at
-# a postgres-flex derivative with pgvector installed for full functionality
-# (Dockerfile: FROM flyio/postgres-flex:17 + apt-get install -y
-# postgresql-17-pgvector) — see "Deploying to Fly.io" in AGENTS.md.
+# pgvector: the stock postgres-flex image does NOT ship pgvector, and AgentOS
+# does not start without it — app/registry.py builds shared_knowledge at import
+# and Knowledge runs CREATE EXTENSION vector, so on a stock cluster the API
+# exits before serving. A pgvector image is therefore built and pushed for
+# every new cluster. FLY_PG_IMAGE overrides it with an existing image;
+# FLY_PG_VERSION pins the postgres-flex major (default 18).
 PG_IMAGE_ARGS=()
 if [[ -n "$FLY_PG_IMAGE" ]]; then
     PG_IMAGE_ARGS=(--image-ref "$FLY_PG_IMAGE")
     echo -e "${DIM}Unmanaged Fly Postgres from FLY_PG_IMAGE=${FLY_PG_IMAGE}${NC}"
+elif "$FLY" status --app "$PG_APP_NAME" &> /dev/null; then
+    # Existing cluster: `fly postgres create` is skipped below, so no image is needed.
+    :
 else
-    echo -e "${DIM}Unmanaged Fly Postgres (stock postgres-flex image).${NC}"
-    echo -e "${BOLD}Note:${NC} stock postgres-flex has no pgvector — sessions/memory work, knowledge"
-    echo -e "bases won't until you recreate with FLY_PG_IMAGE set to a pgvector-enabled image."
+    echo -e "${DIM}Building the pgvector Postgres image (postgres-flex ${FLY_PG_VERSION:-18}).${NC}"
+    if BUILT_IMAGE="$("$(dirname "$0")/pgvector/build.sh" "$APP_NAME" "${FLY_PG_VERSION:-18}")"; then
+        PG_IMAGE_ARGS=(--image-ref "$BUILT_IMAGE")
+        echo -e "${DIM}Unmanaged Fly Postgres from ${BUILT_IMAGE}${NC}"
+    else
+        echo ""
+        echo -e "${BOLD}Could not build the pgvector Postgres image.${NC}"
+        echo -e "AgentOS does not boot on a stock cluster, so Postgres was not created."
+        echo -e "Fix the build and re-run, or set FLY_PG_IMAGE to an existing pgvector image."
+        exit 1
+    fi
 fi
 echo ""
 if "$FLY" status --app "$PG_APP_NAME" &> /dev/null; then
