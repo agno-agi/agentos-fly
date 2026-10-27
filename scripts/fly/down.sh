@@ -51,6 +51,9 @@ echo ""
 echo -e "This destroys:"
 echo -e "  - app       ${APP_NAME}"
 echo -e "  - postgres  ${PG_APP_NAME}  ${RED}(all data deleted)${NC}"
+# up.sh pushes the pgvector Postgres image under the app's registry namespace,
+# and destroying a Fly app deletes its images. The next up.sh rebuilds it.
+echo -e "  - image     registry.fly.io/${APP_NAME}:pgvector-*  ${DIM}(rebuilt by the next up.sh)${NC}"
 echo ""
 
 if [[ "$1" != "--yes" ]]; then
