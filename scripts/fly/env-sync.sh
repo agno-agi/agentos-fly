@@ -94,6 +94,13 @@ ${line}"
             current_value=""
             continue
             ;;
+        SANDBOX_PROVIDER)
+            # fly.toml selects agentcore; Fly machines have no Docker daemon.
+            if [[ "$current_value" != "agentcore" ]]; then
+                echo "SANDBOX_PROVIDER=${current_value} in ${ENV_FILE}: Fly supports only agentcore, which fly.toml sets. Remove the line or set agentcore."
+                exit 1
+            fi
+            ;;
         FLY_*)
             # Deploy settings read by up.sh (region, org, Postgres image), not the app.
             echo -e "${DIM}  Skipping ${current_key} (deploy setting for up.sh)${NC}"

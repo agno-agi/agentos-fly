@@ -28,8 +28,12 @@ The JWT verification key is public and may be shared.
 - Sandboxes: Fly machines have no Docker daemon, so the Docker sandbox cannot run
   there. For hosted isolation, enable `SANDBOX_ENABLED` and set the repository in
   `app/sandbox.py`; `fly.toml` selects AgentCore. Configure its ARN and S3 settings per
-  the [sandbox guide](../../../docs/harnesses.md#aws-agentcore-sandbox) and add
-  AWS credentials to the env file. `AWS_PROFILE` is host-only and is not uploaded.
+  the [sandbox guide](../../../docs/harnesses.md#aws-agentcore-sandbox). The env file
+  needs `AWS_REGION`, the `AGENTCORE_*` values and the application user's
+  `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`, never the provisioning credentials.
+  `up.sh` and `env-sync.sh` upload them from the file; shell exports are not used.
+  `AWS_PROFILE` is host-only and is not uploaded. Leave `SANDBOX_PROVIDER` out of the
+  env file or keep it `agentcore`; `env-sync.sh` refuses other values.
   Never put secret values in source.
 
 ## 2. Find an existing deployment

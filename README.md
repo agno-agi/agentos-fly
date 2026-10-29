@@ -264,9 +264,17 @@ Before running multiple API instances, follow [Scaling](docs/scaling.md).
 
 ### Coding agent backend
 
-`fly.toml` selects `SANDBOX_PROVIDER=agentcore`. Add the remaining host settings
-from `scripts/aws.py status` to `.env.production`, then run `./scripts/fly/env-sync.sh`
-and deploy code with `./scripts/fly/redeploy.sh`. Keep provisioning profiles local.
+`fly.toml` selects `SANDBOX_PROVIDER=agentcore`; Fly has no Docker daemon, so leave
+that setting out of `.env.production` or keep it `agentcore`. Add to `.env.production`:
+
+- `AWS_REGION` and the `AGENTCORE_*` values printed by `scripts/aws.py status`.
+- `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` for the application user's access
+  key, which you create in IAM ([step 3](docs/harnesses.md#3-create-credentials-for-your-api)).
+- `GH_TOKEN` if coding agents should use GitHub.
+
+Then run `./scripts/fly/env-sync.sh` and deploy code with `./scripts/fly/redeploy.sh`.
+Keep provisioning profiles and credentials local. If an older deployment carries
+`AWS_PROFILE` or `AWS_SESSION_TOKEN`, remove it with `fly secrets unset`.
 
 Enable coding agents and `SANDBOX_ENABLED` in code only after completing the
 [harness setup](docs/harnesses.md); retain production JWT settings.
