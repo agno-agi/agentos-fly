@@ -26,9 +26,14 @@ The JWT verification key is public and may be shared.
 - `FLY_*` lines in the env file are deploy settings for `up.sh`; `env-sync.sh`
   does not upload them.
 - Sandboxes: Fly machines have no Docker daemon, so the Docker sandbox cannot run
-  there. For hosted isolation, configure AgentCore and S3 in `app/sandbox.py` per
-  the [sandbox guide](../../../docs/sandboxes.md#aws-agentcore-sandbox) and add
-  AWS credentials to the env file. `AWS_PROFILE` is host-only and is not uploaded.
+  there. For hosted isolation, enable `SANDBOX_ENABLED` and set the repository in
+  `app/sandbox.py`; `fly.toml` selects AgentCore. Configure its ARN and S3 settings per
+  the [sandbox guide](../../../docs/harnesses.md#aws-agentcore-sandbox). The env file
+  needs `AWS_REGION`, the `AGENTCORE_*` values and the application user's
+  `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`, never the provisioning credentials.
+  `up.sh` and `env-sync.sh` upload them from the file; shell exports are not used.
+  `AWS_PROFILE` is host-only and is not uploaded. Leave `SANDBOX_PROVIDER` out of the
+  env file or keep it `agentcore`; `env-sync.sh` refuses other values.
   Never put secret values in source.
 
 ## 2. Find an existing deployment
@@ -116,7 +121,7 @@ or resolve with `curl --doh-url https://cloudflare-dns.com/dns-query`. Do not
 release or reallocate IPs to fix slow DNS. Check the Fly status page for
 platform incidents when results don't add up.
 
-Model prompts spend calls; report exactly what ran. Engineer HTTP runs, delegation
+Model prompts spend calls; report exactly what ran. Coding agent HTTP runs, delegation
 and Company Task completion need separate verification before claiming they work.
 
 Hand over the URL, the results above and the commands in step 5, plus

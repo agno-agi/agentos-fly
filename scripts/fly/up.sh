@@ -365,6 +365,14 @@ SECRET_ARGS=(
 # Claude Engineer authenticates with one of these two; Codex uses OPENAI_API_KEY.
 [[ -n "$ANTHROPIC_API_KEY" ]] && SECRET_ARGS+=("ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}")
 [[ -n "$CLAUDE_CODE_OAUTH_TOKEN" ]] && SECRET_ARGS+=("CLAUDE_CODE_OAUTH_TOKEN=${CLAUDE_CODE_OAUTH_TOKEN}")
+# Coding-agent host settings: GitHub access and the AgentCore sandbox. Only values
+# written in the env file are uploaded, as env-sync.sh does — AWS keys exported in
+# this shell are usually provisioning credentials and must stay local.
+for key in GH_TOKEN GITHUB_READ_TOKEN GIT_AUTHOR_NAME GIT_AUTHOR_EMAIL GIT_COMMITTER_NAME \
+    GIT_COMMITTER_EMAIL AWS_REGION AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY \
+    AGENTCORE_RUNTIME_ARN AGENTCORE_CHECKPOINT_BUCKET AGENTCORE_CHECKPOINT_PREFIX; do
+    [[ -n "$ENV_FILE" && -n "${!key}" ]] && grep -qE "^${key}=" "$ENV_FILE" && SECRET_ARGS+=("${key}=${!key}")
+done
 # --stage: queue the values without a restart; the deploy below picks them up.
 "$FLY" secrets set --app "$APP_NAME" --stage "${SECRET_ARGS[@]}" > /dev/null
 echo -e "${DIM}Staged ${#SECRET_ARGS[@]} secrets${NC}"

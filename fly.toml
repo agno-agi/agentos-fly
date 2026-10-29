@@ -21,6 +21,7 @@ primary_region = "iad"
   dockerfile = "Dockerfile"
 
 [env]
+  SANDBOX_PROVIDER = "agentcore"
   WAIT_FOR_DB = "True"
   AGENTOS_URL = "https://agentos.fly.dev"
 
