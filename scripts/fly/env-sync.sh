@@ -108,6 +108,13 @@ ${line}"
             current_value=""
             continue
             ;;
+        IMPROVE_*)
+            # /improve reads production with these locally; the deployed app never needs them.
+            echo -e "${DIM}  Skipping ${current_key} (local /improve setting)${NC}"
+            current_key=""
+            current_value=""
+            continue
+            ;;
         OPENAI_API_KEY)
             if [[ -z "$current_value" || "$current_value" == "sk-***" ]]; then
                 echo "OPENAI_API_KEY not set in ${ENV_FILE} — refusing to sync a placeholder."
