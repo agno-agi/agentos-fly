@@ -96,9 +96,7 @@ followed by `./scripts/fly/env-sync.sh`.
 | Settings | `./scripts/fly/env-sync.sh` (one restart for all keys) |
 | Remove a setting | `fly secrets unset NAME` (deleting the env-file line does not remove it) |
 
-`fly secrets list` marks values that are set but not yet deployed as staged. Never
-raise the machine count with `fly scale count` or enable HA: each machine runs the
-scheduler, so every cron would fire twice. Follow [docs/scaling.md](../../../docs/scaling.md)
+`fly secrets list` marks values that are set but not yet deployed as staged. Keep one machine as the verified default; multiple replicas need shared coordination. Follow [docs/scaling.md](../../../docs/scaling.md)
 before adding replicas. Rotating the database password is separate from `env-sync.sh`.
 
 ## 6. Verify and hand over

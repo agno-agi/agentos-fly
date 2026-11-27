@@ -8,13 +8,14 @@ from pathlib import Path
 
 from agno.job_queue import QueueConfig
 from agno.os import AgentOS, CompanyConfig, OSManager
+from agno.os.authz import PLATFORM, READ, RUN, Authorization, Role, UserDirectory
 
 # from agents.engineers import create_claude_engineer
 # from agents.engineers import create_codex_engineer
-from app.company import products
+from app.company import goals
 from app.interfaces import attach_interfaces, mcp_auth
 from app.registry import registry, shared_knowledge, shared_learning
-from app.settings import manager_model
+from app.settings import super_agent_model
 from db import get_postgres_db
 
 runtime_env = getenv("RUNTIME_ENV", "prd")
@@ -22,22 +23,30 @@ agentos_url = getenv("AGENTOS_URL", "http://127.0.0.1:8000")
 agentos_root = Path(__file__).resolve().parent.parent
 db = get_postgres_db()
 
+# A new user is a member: they read and run your agents, teams and workflows.
+# Move a user to platform in user management to give them Super Agent.
+member = Role("member", scopes=[*READ, *RUN])
+platform = Role("platform", scopes=[*READ, *RUN, *PLATFORM])
+
 agent_os = AgentOS(
     db=db,
     mcp=True,
     tracing=True,
     scheduler=True,
     user_isolation=True,
-    user_directory=True,
+    user_directory=UserDirectory(default_role=member),
     scheduler_base_url=agentos_url,
     mcp_auth=mcp_auth(agentos_url),
-    authorization=runtime_env != "dev",
+    authorization=Authorization(roles=[member, platform]) if runtime_env != "dev" else False,
     manager=OSManager(
         root=agentos_root,
-        model=manager_model(),
+        model=super_agent_model(),
         learning=shared_learning,
     ),
-    company=CompanyConfig(products=products, model=manager_model()),
+    company=CompanyConfig(
+        goals=goals,
+        model=super_agent_model(),
+    ),
     queue=QueueConfig(durable=True, db=db),
     knowledge=[shared_knowledge],
     agents=[
